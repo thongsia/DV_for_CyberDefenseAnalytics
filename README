@@ -1,0 +1,15 @@
+Data Visualization for Cyber Defense Analytics
+
+ABSTRACT
+Conventional cyber defence analytics solutions, which are modularly signature-based and network-centric, are largely ineffective to detect modern threat vectors such as APT and insider threats. This paper will firstly explore the stages of Advanced Persistent Threat attack, and secondly, explore and design a visualization concept which is synergistic with the analytics to deliver enhanced results. The analytics and visualizations will be validated on a big dataset of host-based network data collected from a real networked environment.
+
+REAL-NETWORKED DATASET
+NETRESEC AB. Capture files from Mid-Atlantic CCDC, 2012  
+[Online; posted 2012, accessed Aug 12, 2018] https://www.netresec.com/?page=MACCDC
+
+The experiment has been conducted in the following set up environment:
+64 Bit Ubuntu 18.04.1 LTS
+ElasticSearch version 6.4.2
+Moloch version 1.5.3
+D3 version 4.0
+

@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<head>
+<style>
+
+.links path {
+  fill: none;
+  stroke: #999;
+  stroke-opacity: 0.6;
+}
+
+.nodes circle {
+  fill: #d62333;
+  stroke: #fff;
+  stroke-width: 1px;
+}
+
+</style>
+</head>
+<body>
+<svg></svg>
+<script src="https://d3js.org/d3.v4.min.js"></script>
+<script>
+(async function main () {
+
+	var query = {
+		query: {
+			match_all: {}
+		},
+		from: 0,
+		size: 3000,
+		_source: [
+			"protocol",
+			"ipProtocol",
+			"srcIp",
+			"dstIp",
+			"firstPacket",
+			"lastPacket",
+			"totBytes",
+			"totDataBytes"
+		]
+	};
+
+	var esResults = await fetch("http://localhost:9200/sessions2-120316/_search", {
+		method: "POST",
+		headers: {
+			Accept: "application/json",
+			"Content-Type": "application/json"
+		},
+		body: JSON.stringify(query)
+	})
+	.then(x => x.json()).then(x => {
+		if (x.hits.hits.length == 0){
+			throw new Exception("no results");
+		}
+		var transformed = x.hits.hits.map(y => y._source).map(y => {
+			y.firstPacketReadable = new Date(y.firstPacket).toISOString();
+			y.lastPacketReadable = new Date(y.lastPacket).toISOString();
+			return y;
+		});
+		return transformed;
+	});
+
+	//console.log(esResults);
+	//console.log(esResults[0].protocol[0]);
+
+	// Time Filter
+	/*
+	esResults = esResults.filter(x => {
+		if (x.firstPacket >= 1331901000000 & x.lastPacket <= 1331901022170) {
+			return true;
+		}
+		return false;
+	});
+	*/
+	//console.log(esResults);
+
+	// Grouping by IP
+	var grpedByIpPair = new Map();
+	for (var esResult of esResults) {
+		// generate map key
+		var ipFirst, ipSecond;
+		if (esResult.srcIp <= esResult.dstIp){
+			ipFirst = esResult.srcIp;
+			ipSecond = esResult.dstIp;
+		} else {
+			ipFirst = esResult.dstIp;
+			ipSecond = esResult.srcIp;
+		}	
+var ipKey = ipFirst + "_" + ipSecond;
+
+		// add values into map
+		if (!grpedByIpPair.has(ipKey)){
+			grpedByIpPair.set(ipKey, []);
+		}
+		grpedByIpPair.get(ipKey).push(esResult);
+	}
+	console.log(grpedByIpPair);
+
+
+
+	// Setting up the drawing space
+	var i, j, node;
+	var groupSep = 10;
+
+	var nodeRadius = d3.scaleSqrt().range([5, 20]);
+
+	var linkWidth = d3.scaleLinear().range([1.5, 3* nodeRadius.range()[0]]);
+
+	var margin = {
+	  top: nodeRadius.range()[1] + 1,
+	  right: nodeRadius.range()[1] + 1,
+	  bottom: nodeRadius.range()[1] + 1,
+	  left: nodeRadius.range()[1] + 1
+	};
+
+	var width = 1500 - margin.left - margin.right;
+	var height = 800 - margin.top - margin.bottom;
+
+	var x = d3.scaleLinear().range([0, width]);
+
+	var svg = d3.select('svg')
+	  .attr('width', width + margin.left + margin.right)
+	  .attr('height', height + margin.top + margin.bottom)
+	  .append('g')
+	  .attr('transform', 'translate(' + margin.left + ',' + margin.top + ')');
+
+//************* start reading from "d3.json('jean.json', function (error, graph) {" onwards***********//
+
+
+
+
+//console.log(grpedByIpPair.get("192.168.202.79_192.168.229.153")[0].srcIp);
+
+
+
+// Node Formation
+let uniqueIpsSet = new Set();
+for (let key of grpedByIpPair.keys()) {
+	//console.log(key);
+	let arr = key.split("_"); // break key into its 2 IPs
+	//console.log(arr);
+	uniqueIpsSet.add(arr[0]);
+	uniqueIpsSet.add(arr[1]);
+}
+
+//console.log(uniqueIpsSet);
+
+let uniqueIpsArr = Array.from(uniqueIpsSet); // from Set to Array
+console.log(uniqueIpsArr.length);
+
+let nodes = [];
+for (i = 0; i < uniqueIpsArr.length; ++i) {
+	let node = {};
+    	node.x = i * (width / uniqueIpsArr.length - 1);
+    	node.y = height;
+    	node.ip = uniqueIpsArr[i];
+	node.connFrq = 0;	
+	nodes.push(node);
+}
+
+// IdToNode
+let idToNode = {};
+for (let node of nodes) {
+	idToNode[node.ip] = node;
+}
+
+// Link Formation
+let links = [];
+for (let key of grpedByIpPair.keys()){
+	let arr = key.split("_"); // break key into its 2 IPs
+	let link = {};
+	link.source = idToNode[arr[0]]; // get the node with the IP called arr[0]
+	link.source.connFrq++;
+	link.target = idToNode[arr[1]]; // get the node with the IP called arr[1]
+	link.target.connFrq++;	
+
+	let size = 0;
+	for (let packet of grpedByIpPair.get(key)) {
+		//console.log(packet);
+		size += packet.totDataBytes;
+	}
+
+	link.size = size;
+	links.push(link);
+}
+
+console.log(links);
+
+let linkSize = [];
+for (i = 0; i < links.length; ++i) {
+	linkSize[i]=links[i].size;
+}
+
+let allSizes = links.map(x=> x.size);
+let maxSize = Math.max(allSizes);
+let minSize = Math.min(allSizes);
+
+
+LSmax=Math.max(...linkSize);
+LSmin=Math.min(...linkSize);
+console.log(linkSize);
+console.log(LSmax);
+console.log(LSmin);
+//console.log(nodes);
+
+  nodeRadius.domain(d3.extent(nodes, function (d) { return d.connFrq; }));
+
+  linkWidth.domain(d3.extent(links, function (d) { return d.size; }));
+
+// Draw
+var d3link = svg.append('g')
+    .attr('class', 'links')
+    .selectAll('path')
+    .data(links)
+    .enter().append('path')
+    .attr('d', function (d) {
+      return ['M', d.source.x, height, 'A',
+        (d.source.x - d.target.x)/2, ',',
+        /*(d.source.x - d.target.x)/2*/ (height*(Math.log(d.size-LSmin)/Math.log(LSmax-LSmin))), 0, 0, ',',
+        d.source.x < d.target.x ? 1 : 0, d.target.x, ',', height]
+        .join(' ');
+    })
+    .attr('stroke-width', function (d) { return linkWidth(d.size); })
+    .on('mouseover', function (d) {
+      d3link.style('stroke', null);
+      d3.select(this).style('stroke', '#d62333');
+      d3node.style('fill', function (node_d) {
+        return node_d === d.source || node_d === d.target ? 'black' : null;
+      });
+    })
+    .on('mouseout', function (d) {
+      d3link.style('stroke', null);
+      d3node.style('fill', null);
+    });
+//mouseover link
+    d3link.append('title').text(function (d) { return 'SrcIP: '+d.source.ip+' to DstIP: ' + d.target.ip+' DataSize: ' + d.size; });
+
+var d3node = svg.append('g')
+    .attr('class', 'nodes')
+    .selectAll('circle')
+    .data(nodes)
+    .enter().append('circle')
+    .attr('cx', function (d) { return d.x; })
+    .attr('cy', function (d) { return d.y; })
+    .attr('r', function (d) { return nodeRadius(d.connFrq); /*return nodeRadius(d.chapters.length);*/})
+    .on('mouseover', function (d) {
+      d3node.style('fill', null);
+      d3.select(this).style('fill', 'black');
+      var nodesToHighlight = links.map(function (e) { return e.source === d ? e.target : e.target === d ? e.source : 0})
+        .filter(function (d) { return d; });
+      d3node.filter(function (d) { return nodesToHighlight.indexOf(d) >= 0; })
+        .style('fill', '#555');
+      d3link.style('stroke', function (link_d) {
+        return link_d.source === d | link_d.target === d ? '#d62333' : null;
+      });
+    })
+    .on('mouseout', function (d) {
+      d3node.style('fill', null);
+      d3link.style('stroke', null);
+    });
+
+  d3node.append('title').text(function (d) { return 'IP: '+d.ip+' ~ ConnectFreq: ' + d.connFrq; });
+	
+})();
+
+</script>
+</body>
+</html>
